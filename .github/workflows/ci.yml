@@ -1,0 +1,59 @@
+# CI de SIGIP-Frontend: en cada push o pull request ejecuta las pruebas, compila Angular
+# y construye la imagen Docker (nginx).
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Pruebas y build (Angular)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Pruebas unitarias (Vitest)
+        run: npm test
+
+      - name: Build de producción
+        run: npm run build
+
+      - name: Publicar build del frontend
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/frontend/browser/
+
+  docker:
+    name: Imagen Docker
+    needs: frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Construir imagen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          tags: sigip/frontend:${{ github.sha }}
+          push: false
